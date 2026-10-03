@@ -1,0 +1,21 @@
+{
+  "name": "Miko",
+  "version": "1.0.0",
+  "description": "AI native POS/ERP & Accounting software for small businesses",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "msix": "node scripts/msix.js",
+    "msix:debug": "node scripts/debug-build.js",
+    "dev": "npm run dev --workspace=neutralino"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "workspaces": [
+    "apps/frontend",
+    "apps/neutralino",
+    "apps/server"
+  ]
+}
