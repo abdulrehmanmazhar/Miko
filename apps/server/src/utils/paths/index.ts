@@ -15,6 +15,8 @@ export const appDataRoot = join(appDataPath, env.APP_NAME);
 
 export const databasePath = join(appDataRoot, "database.db");
 
+export const logsPath = join(appDataRoot, "app.log");
+
 export function getModuleURL(relativePath: string, baseUrl: string): URL {
   const AbsolutePath = path.resolve(
     path.dirname(fileURLToPath(baseUrl)),
