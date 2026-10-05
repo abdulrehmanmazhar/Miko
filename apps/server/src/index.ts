@@ -1,6 +1,6 @@
 import { actionRecords, users } from "./schema/tables.js";
 import { connectDatabase, database } from "./services/database.js";
-import { pushActionContext } from "./utils/install_action_recorder/index.js";
+import { pushActionContext } from "./utils/action_recorder/index.js";
 (async () => {
   console.log("hello");
   connectDatabase();

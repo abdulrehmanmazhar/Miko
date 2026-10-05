@@ -20,7 +20,7 @@ export const actionRecords = sqliteTable(
     sequence: integer("sequence").notNull(),
 
     // INSERT | UPDATE | DELETE
-    action: text("action", { enum: ["INSERT", "UPDATE", "DELETE"] }).notNull(),
+    action: text("action", { enum: ["insert", "update", "delete"] }).notNull(),
 
     // The table affected
     tableName: text("table_name").notNull(),

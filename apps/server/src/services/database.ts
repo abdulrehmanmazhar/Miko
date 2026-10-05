@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { databasePath, migrationsPath } from "../utils/paths/index.js";
-import { installActionRecorder } from "../utils/install_action_recorder/index.js";
+import { installActionRecorder } from "../utils/action_recorder/index.js";
 
 mkdirSync(dirname(databasePath), { recursive: true });
 
