@@ -1,7 +1,10 @@
 import type { ITaskInstance } from "../../types/task_manager.js";
 import { EventEmitter } from "events";
 import { taskRunner } from "./orchestrator.js";
-import { getTaskModuleURL } from "../paths/index.js";
+import getActions from "../../task/database/get_actions.js";
+import createCurrency from "../../task/database/create_currency.js";
+import createProduct from "../../task/database/create_product.js";
+import createUnit from "../../task/database/create_unit.js";
 
 export const TaskEvents = new EventEmitter();
 
@@ -20,7 +23,7 @@ export class Task implements ITaskInstance {
   error: string | null = null;
   data: any = null;
   taskArgs?: any;
-  taskModule: string;
+  taskModule: AsyncGeneratorFunction;
   event: EventEmitter;
 
   constructor(task: Partial<ITaskInstance>) {
@@ -38,7 +41,7 @@ export class Task implements ITaskInstance {
     this.error = task.error || null;
     this.data = task.data || null;
     this.taskArgs = task.taskArgs || [];
-    this.taskModule = task.taskModule || "default-module";
+    this.taskModule = task.taskModule! || async function* () {};
     // require event to be passed explicitly (injected)
     this.event = task.event || TaskEvents;
     this.businessFunction = task.businessFunction || this.businessFunction;
@@ -526,7 +529,41 @@ const databaseTasks = [
     defaults: {
       feedbackScope: "global",
       intensity: "low",
-      taskModule: getTaskModuleURL("database/get_actions.js"),
+      // taskModule: getTaskModuleURL("database/get_actions.js"),
+      taskModule: getActions,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "create_currency",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      // taskModule: getTaskModuleURL("database/create_currency.js"),
+      taskModule: createCurrency,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "create_product",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      // taskModule: getTaskModuleURL("database/create_product.js"),
+      taskModule: createProduct,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "create_unit",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      // taskModule: getTaskModuleURL("database/create_unit.js"),
+      taskModule: createUnit,
       retries: 0,
       maxRetries: 1,
     } as Partial<ITaskInstance>,
@@ -674,8 +711,8 @@ const databaseTasks = [
 
 export const databaseTaskManager = new TaskManager(
   1,
-  0,
-  0,
+  1,
+  1,
   new EventEmitter(),
   () => {},
 );

@@ -1,15 +1,18 @@
 import { Worker } from "node:worker_threads";
 import type { TTaskIntensity } from "../../types/task_manager.js";
-import { getModuleURL } from "../paths/index.js";
 import { fork } from "node:child_process";
+import workerCode from "./worker.js";
+import processCode from "./process.js";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tempPath } from "../paths/index.js";
+import { join } from "node:path";
 
-async function runInMainThread<T>(
-  fn: string,
-  args: any[],
-): Promise<AsyncGenerator<T>> {
+async function runInMainThread(
+  fn: AsyncGeneratorFunction,
+  args: any,
+): Promise<AsyncGenerator> {
   try {
-    const module = await import(fn);
-    const generatorFunction = module.default;
+    const generatorFunction = fn;
     if (typeof generatorFunction !== "function") {
       throw new Error("Default export must be an async generator function");
     }
@@ -20,15 +23,31 @@ async function runInMainThread<T>(
   }
 }
 
-function runInChildProcess(modulePath: string, args: any, cleanup: () => void) {
-  const childPath = getModuleURL("./process.js", import.meta.url);
-  const child = fork(childPath, [], {
+function runInChildProcess(
+  module: AsyncGeneratorFunction,
+  args: any,
+  cleanup: () => void,
+) {
+  const code = `(${processCode.toString()})()`;
+
+  mkdirSync(tempPath, { recursive: true });
+  for (const entry of readdirSync(tempPath, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith(".js")) {
+      rmSync(join(tempPath, entry.name));
+    }
+  }
+
+  const filename = `${crypto.randomUUID()}.js`;
+  const scriptPath = join(tempPath, filename);
+  writeFileSync(scriptPath, code, "utf-8");
+
+  const child = fork(scriptPath, [], {
     stdio: ["inherit", "inherit", "inherit", "ipc"], // enable IPC
     env: process.env,
   });
 
   // Send module info
-  child.send({ modulePath, args });
+  child.send({ type: "init", module: module.toString(), args });
 
   let pendingResolve: any = null;
   let pendingReject: any = null;
@@ -75,6 +94,7 @@ function runInChildProcess(modulePath: string, args: any, cleanup: () => void) {
   child.on("error", (err) => {
     pendingReject?.(err);
     cleanup?.();
+    rmSync(scriptPath, { force: true });
     terminateChild();
     console.log("child error");
   });
@@ -85,6 +105,7 @@ function runInChildProcess(modulePath: string, args: any, cleanup: () => void) {
       pendingReject?.(err);
       cleanup?.();
     }
+    rmSync(scriptPath, { force: true });
     terminateChild();
     console.log("child exit");
   });
@@ -156,9 +177,14 @@ function runInChildProcess(modulePath: string, args: any, cleanup: () => void) {
   };
 }
 
-function runInWorkerThread(modulePath: string, args: any, cleanup: () => void) {
-  const worker = new Worker(getModuleURL("./worker.js", import.meta.url), {
-    workerData: { modulePath, args },
+function runInWorkerThread(
+  module: AsyncGeneratorFunction,
+  args: any,
+  cleanup: () => void,
+) {
+  const worker = new Worker(`(${workerCode.toString()})()`, {
+    eval: true,
+    workerData: { module: module.toString(), args },
   });
 
   let pendingResolve: any = null;
@@ -287,17 +313,17 @@ function runInWorkerThread(modulePath: string, args: any, cleanup: () => void) {
 }
 
 export const taskRunner = async (
-  modulePath: string,
+  module: AsyncGeneratorFunction,
   args: any,
   mode: TTaskIntensity = "medium",
 ) => {
   if (mode === "low") {
-    const result = await runInMainThread(modulePath, args);
+    const result = await runInMainThread(module, args);
     return result;
   } else if (mode === "medium") {
-    const result = runInWorkerThread(modulePath, args, () => {});
+    const result = runInWorkerThread(module, args, () => {});
     return result;
   } else if (mode === "high") {
-    return runInChildProcess(modulePath, args, () => {});
+    return runInChildProcess(module, args, () => {});
   }
 };
