@@ -1,24 +1,31 @@
-// import { actionRecords, users } from "./schema/tables.js";
-// import { connectDatabase, database } from "./services/database.js";
-// import { pushActionContext } from "./utils/action_recorder/index.js";
-// (async () => {
-//   connectDatabase();
-//   let records = await database.select().from(actionRecords);
+import { connectDatabase } from "./services/database.js";
+import { databaseTaskManager } from "./utils/task_manager/index.js";
 
-//   console.log({ records });
+(async () => {
+  connectDatabase();
+  const unitTask = await databaseTaskManager.initiateTask("create_unit", {
+    unit: { name: "kilos" },
+    context: "normal",
+  });
+  console.log(await unitTask.getData());
 
-//   pushActionContext(database, crypto.randomUUID(), "normal");
+  const currencyTask = await databaseTaskManager.initiateTask(
+    "create_currency",
+    {
+      currency: { symbol: "PKR", name: "PKR" },
+      context: "normal",
+    },
+  );
 
-//   const user = await database
-//   .insert(users)
-//   .values([{ name: "Abdur Rahman" }, { name: "Abdullah" }])
-//   .returning();
+  console.log(await currencyTask.getData());
 
-//   console.log(user);
+  const getActionsTask = await databaseTaskManager.initiateTask(
+    "get_actions",
+    {},
+    { intensity: "high" },
+  );
 
-//   records = await database.select().from(actionRecords);
-
-//   console.log({ records });
-// })().catch(console.error);
+  console.log(await getActionsTask.getData());
+})().catch(console.error);
 
 console.log("hello");

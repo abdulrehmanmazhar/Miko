@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 function generateId(): string {
   return randomUUID();
 }
+
 function generateTimestamp(): Date {
   return new Date();
 }
@@ -103,7 +104,7 @@ export const products = sqliteTable("products", {
   id: text("id").primaryKey().$defaultFn(generateId),
   name: text("name").notNull(),
   sku: text("sku").notNull(),
-  unit: text("unit")
+  unitId: text("unit_id")
     .notNull()
     .references(() => units.id, { onDelete: "restrict" }),
   categoryId: text("category_id")
@@ -112,12 +113,6 @@ export const products = sqliteTable("products", {
   currencyId: text("currency_id")
     .notNull()
     .references(() => currencies.id, { onDelete: "restrict" }),
-  trackInventory: integer("track_inventory", {
-    mode: "boolean",
-  })
-    .notNull()
-    .default(true),
-
   inventoryAccountId: text("inventory_account_id"),
   salesAccountId: text("sales_account_id"),
   cogsAccountId: text("cogs_account_id"),
@@ -243,17 +238,9 @@ export const inventoryMovements = sqliteTable(
       ],
     }).notNull(),
 
-    // Positive = stock in; negative = stock out.
-    // Use a consistent scaled-integer quantity precision.
     quantityDelta: integer("quantity_delta").notNull(),
 
-    // Unit cost in the chosen monetary minor unit,
-    // e.g. paisa for PKR.
     unitCost: integer("unit_cost").notNull(),
-
-    // Total inventory valuation change, in minor units.
-    // Signed using the same convention as quantityDelta.
-    valueDelta: integer("value_delta").notNull(),
 
     referenceType: text("reference_type"),
     referenceId: text("reference_id"),
@@ -526,13 +513,17 @@ export const customerPaymentAllocation = sqliteTable(
   },
 );
 
-export const settings = sqliteTable("settings", {
-  id: text("id").primaryKey().$defaultFn(generateId),
-  label: text("label").notNull(),
-  body: text("body", { mode: "json" }).notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(generateTimestamp),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
-  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
-});
+export const settings = sqliteTable(
+  "settings",
+  {
+    id: text("id").primaryKey().$defaultFn(generateId),
+    label: text("label").notNull(),
+    body: text("body", { mode: "json" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(generateTimestamp),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [uniqueIndex("settings_label_idx").on(table.label)],
+);

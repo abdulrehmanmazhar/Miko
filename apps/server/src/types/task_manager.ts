@@ -44,7 +44,7 @@ export interface ITaskInstance {
   error: string | null;
   data: any | null;
   taskArgs?: any;
-  taskModule: string;
+  taskModule: AsyncGeneratorFunction;
   event: EventEmitter;
   taskFunction?: (
     taskArgs: any,
