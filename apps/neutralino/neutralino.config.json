@@ -1,0 +1,73 @@
+{
+  "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/main/schemas/neutralino.config.schema.json",
+  "applicationId": "js.neutralino.sample",
+  "version": "1.0.0",
+  "defaultMode": "window",
+  "port": 0,
+  "documentRoot": "/resources/",
+  "url": "/",
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "enableExtensions": true,
+  "tokenSecurity": "one-time",
+  "logging": {
+    "enabled": true,
+    "writeToLogFile": true
+  },
+  "nativeAllowList": ["app.*", "os.*", "extensions.*", "events.*", "debug.log"],
+  "modes": {
+    "window": {
+      "title": "extension-neu",
+      "width": 800,
+      "height": 500,
+      "minWidth": 400,
+      "minHeight": 200,
+      "center": true,
+      "fullScreen": false,
+      "alwaysOnTop": false,
+      "icon": "/resources/icons/appIcon.png",
+      "enableInspector": true,
+      "borderless": false,
+      "maximize": false,
+      "hidden": false,
+      "resizable": true,
+      "exitProcessOnClose": false,
+      "injectGlobals": true
+    },
+    "browser": {
+      "globalVariables": {
+        "TEST": "Test value browser"
+      },
+      "nativeBlockList": ["filesystem.*"]
+    },
+    "cloud": {
+      "url": "/resources/#cloud",
+      "nativeAllowList": ["app.*"]
+    },
+    "chrome": {
+      "width": 800,
+      "height": 500,
+      "args": "--user-agent=\"Neutralinojs chrome mode\"",
+      "nativeBlockList": ["filesystem.*", "os.*"]
+    }
+  },
+  "cli": {
+    "binaryName": "extension-neu",
+    "resourcesPath": "/resources/",
+    "extensionsPath": "/extensions/",
+    "binaryVersion": "6.9.0",
+    "clientVersion": "6.9.0",
+    "frontendLibrary": {
+      "devUrl": "http://localhost:5173",
+      "projectPath": "../frontend",
+      "devCommand": "set VITE_CTXT=NEUTRALINO&&npm run dev",
+      "patchFile": "../frontend/dist/index.html"
+    }
+  },
+  "extensions": [
+    {
+      "id": "js.neutralino.binaryextension",
+      "command": "cd ../server && npm run build:script && npm start"
+    }
+  ]
+}
