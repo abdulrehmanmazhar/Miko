@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { databasePath, migrationsPath } from "../utils/paths/index.js";
 import { installActionRecorder } from "../utils/action_recorder/index.js";
+import { log } from "./logger.js";
 
 mkdirSync(dirname(databasePath), { recursive: true });
 
@@ -23,7 +24,7 @@ export const connectDatabase = () => {
     runMigrations();
     installActionRecorder(database, "action_records");
   } catch (error) {
-    console.error("Error connecting to database:", error);
+    log("error", "Error connecting to database", { error });
     throw error;
   }
 };

@@ -1,5 +1,6 @@
 import { Worker } from "node:worker_threads";
 import type { TTaskIntensity } from "../../types/task_manager.js";
+import { log } from "../../services/logger.js";
 import { fork } from "node:child_process";
 import workerCode from "./worker.js";
 import processCode from "./process.js";
@@ -83,11 +84,11 @@ function runInChildProcess(
         pendingReject?.(err);
         cleanup?.();
         terminateChild();
-        console.log("child message error");
+        log("error", "Child process message error");
         break;
 
       default:
-        console.warn("[ChildProcess] Unknown message:", msg);
+        log("warn", "[ChildProcess] Unknown message", { msg });
     }
   });
 
@@ -96,7 +97,7 @@ function runInChildProcess(
     cleanup?.();
     rmSync(scriptPath, { force: true });
     terminateChild();
-    console.log("child error");
+    log("error", "Child process error", { error: err });
   });
 
   child.on("exit", (code) => {
@@ -107,7 +108,7 @@ function runInChildProcess(
     }
     rmSync(scriptPath, { force: true });
     terminateChild();
-    console.log("child exit");
+    log("info", "Child process exit", { code });
   });
 
   /** Graceful termination */
@@ -117,10 +118,10 @@ function runInChildProcess(
       isDone = true;
     }
     try {
-      console.log("Kiling child process");
+      log("info", "Kiling child process");
       child.kill();
     } catch {
-      console.log("Could not kill child process");
+      log("warn", "Could not kill child process");
     }
   }
 
@@ -225,7 +226,7 @@ function runInWorkerThread(
         break;
 
       default:
-        console.warn("[Worker] Unknown message:", msg);
+        log("warn", "[Worker] Unknown message", { msg });
     }
   });
 
@@ -250,9 +251,9 @@ function runInWorkerThread(
       isCanceled = true;
       isDone = true;
     }
-    console.log("killing worker");
+    log("info", "killing worker");
     worker.terminate().catch(() => {
-      console.log("Could not kill worker");
+      log("warn", "Could not kill worker");
     });
   }
 

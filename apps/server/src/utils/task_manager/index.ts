@@ -1,10 +1,15 @@
 import type { ITaskInstance } from "../../types/task_manager.js";
 import { EventEmitter } from "events";
+import { log } from "../../services/logger.js";
 import { taskRunner } from "./orchestrator.js";
 import getActions from "../../task/database/get_actions.js";
 import createCurrency from "../../task/database/create_currency.js";
 import createProduct from "../../task/database/create_product.js";
 import createUnit from "../../task/database/create_unit.js";
+import undoActions from "../../task/database/undo_actions.js";
+import redoActions from "../../task/database/redo_actions.js";
+import mutateTableTask from "../../task/database/mutate_table.js";
+import recordSale from "../../task/database/record_sale.js";
 
 export const TaskEvents = new EventEmitter();
 
@@ -104,7 +109,7 @@ export class Task implements ITaskInstance {
     const resumeEvent = `task:resume:${this.id}`;
 
     const onCancel = () => {
-      console.log("cancel");
+      log("info", "Task canceled", { taskId: this.id });
       canceled = true;
       if (resumeResolver) {
         resumeResolver(); // unblock if waiting
@@ -326,7 +331,7 @@ export class TaskManager {
         // schedule a debounced run to avoid thrashing
         this.scheduleRun();
       } catch (error) {
-        console.log(error);
+        log("error", "Task queue update failed", { error });
       }
     });
   }
@@ -359,7 +364,7 @@ export class TaskManager {
       this._feedback(this.taskQueue);
     } catch (e) {
       // swallow IPC errors
-      console.log("IPC send failed", e);
+      log("warn", "IPC send failed", { error: e });
     }
 
     return Promise.resolve();
@@ -448,7 +453,7 @@ export class TaskManager {
           //   await runInMainThread(task.businessFunction, [task.taskArgs]);
           // }
           task.businessFunction(task.taskArgs).catch((err) => {
-            console.log(err);
+            log("error", "Task business function failed", { error: err });
           });
         } catch (err) {
           throw err;
@@ -470,7 +475,8 @@ export class TaskManager {
       (t) => t.status === "queued",
     ).length;
 
-    console.debug(
+    log(
+      "debug",
       `runTaskQueue: started ${toRun.length} tasks — running:${runningAfter} queued:${queuedAfter}`,
     );
   }
@@ -486,7 +492,7 @@ export class TaskManager {
   async cancelTask(id: string) {
     // namespaced event
     const task = this.taskQueue.find((t) => t.id === id);
-    if (!task) return console.log("not found in queue");
+    if (!task) return log("warn", "Task not found in queue", { taskId: id });
     if (task.status !== "failed") {
       this.taskEvents.emit(`task:cancel:${id}`);
     } else {
@@ -564,6 +570,78 @@ const databaseTasks = [
       intensity: "low",
       // taskModule: getTaskModuleURL("database/create_unit.js"),
       taskModule: createUnit,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "create_table_row",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      taskModule: mutateTableTask,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "update_table_row",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      taskModule: mutateTableTask,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "soft_delete_table_row",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      taskModule: mutateTableTask,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "hard_delete_table_row",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      taskModule: mutateTableTask,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "record_sale",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      taskModule: recordSale,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "undo_actions",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      // taskModule: getTaskModuleURL("database/create_unit.js"),
+      taskModule: undoActions,
+      retries: 0,
+      maxRetries: 1,
+    } as Partial<ITaskInstance>,
+  },
+  {
+    name: "redo_actions",
+    defaults: {
+      feedbackScope: "global",
+      intensity: "low",
+      // taskModule: getTaskModuleURL("database/create_unit.js"),
+      taskModule: redoActions,
       retries: 0,
       maxRetries: 1,
     } as Partial<ITaskInstance>,

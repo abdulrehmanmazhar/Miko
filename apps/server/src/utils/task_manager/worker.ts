@@ -26,7 +26,6 @@ export default async () => {
         switch (msg?.type) {
           case "next": {
             const result = await gen.next();
-            console.log(result);
             const { value, done } = result;
             parentPort?.postMessage({
               type: "result",
