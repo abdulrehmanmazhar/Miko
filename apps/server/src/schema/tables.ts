@@ -5,7 +5,6 @@ import {
   sqliteTable,
   text,
   index,
-  real,
   uniqueIndex,
   check,
 } from "drizzle-orm/sqlite-core";
@@ -100,35 +99,48 @@ export const currencies = sqliteTable("currencies", {
   deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
 });
 
-export const products = sqliteTable("products", {
-  id: text("id").primaryKey().$defaultFn(generateId),
-  name: text("name").notNull(),
-  sku: text("sku").notNull(),
-  unitId: text("unit_id")
-    .notNull()
-    .references(() => units.id, { onDelete: "restrict" }),
-  categoryId: text("category_id")
-    .notNull()
-    .references(() => categories.id, { onDelete: "cascade" }),
-  currencyId: text("currency_id")
-    .notNull()
-    .references(() => currencies.id, { onDelete: "restrict" }),
-  inventoryAccountId: text("inventory_account_id"),
-  salesAccountId: text("sales_account_id"),
-  cogsAccountId: text("cogs_account_id"),
+export const products = sqliteTable(
+  "products",
+  {
+    id: text("id").primaryKey().$defaultFn(generateId),
+    name: text("name").notNull(),
+    sku: text("sku").notNull().unique(),
+    unitId: text("unit_id")
+      .notNull()
+      .references(() => units.id, { onDelete: "restrict" }),
+    categoryId: text("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    currencyId: text("currency_id")
+      .notNull()
+      .references(() => currencies.id, { onDelete: "restrict" }),
+    inventoryAccountId: text("inventory_account_id").references(
+      () => accounts.id,
+      { onDelete: "restrict" },
+    ),
+    salesAccountId: text("sales_account_id").references(() => accounts.id, {
+      onDelete: "restrict",
+    }),
+    cogsAccountId: text("cogs_account_id").references(() => accounts.id, {
+      onDelete: "restrict",
+    }),
 
-  isActive: integer("is_active", {
-    mode: "boolean",
-  })
-    .notNull()
-    .default(true),
-  extra: text("extra", { mode: "json" }),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(generateTimestamp),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
-  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
-});
+    isActive: integer("is_active", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(true),
+    extra: text("extra", { mode: "json" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(generateTimestamp),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => ({
+    productSkuIdx: index("products_sku_idx").on(table.sku),
+  }),
+);
 
 export const batches = sqliteTable(
   "batches",
@@ -159,7 +171,8 @@ export const batchPrices = sqliteTable(
     batchId: text("batch_id")
       .notNull()
       .references(() => batches.id, { onDelete: "cascade" }),
-    salePrice: real("sale_price").notNull(),
+    salePrice: integer("sale_price").notNull(),
+    discount: integer("discount").notNull(),
     validFrom: integer("valid_from", { mode: "timestamp_ms" }).notNull(),
     validTo: integer("valid_to", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -188,7 +201,9 @@ export const stock = sqliteTable(
       .references(() => products.id, {
         onDelete: "cascade",
       }),
-    warehouseId: text("warehouse_id"),
+    warehouseId: text("warehouse_id").references(() => warehouses.id, {
+      onDelete: "restrict",
+    }),
     validFrom: integer("valid_from", { mode: "timestamp_ms" }).notNull(),
     validTo: integer("valid_to", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -242,9 +257,6 @@ export const inventoryMovements = sqliteTable(
 
     unitCost: integer("unit_cost").notNull(),
 
-    referenceType: text("reference_type"),
-    referenceId: text("reference_id"),
-
     occurredAt: integer("occurred_at", {
       mode: "timestamp_ms",
     }).notNull(),
@@ -264,11 +276,6 @@ export const inventoryMovements = sqliteTable(
 
     index("inventory_movements_occurred_at_idx").on(table.occurredAt),
 
-    index("inventory_movements_reference_idx").on(
-      table.referenceType,
-      table.referenceId,
-    ),
-
     check(
       "inventory_movements_quantity_nonzero",
       sql`${table.quantityDelta} <> 0`,
@@ -285,7 +292,9 @@ export const accounts = sqliteTable(
     type: text("type", {
       enum: ["asset", "liability", "equity", "income", "expense"],
     }).notNull(),
-    parentId: text("parent_id"),
+    parentId: text("parent_id").references((): AnySQLiteColumn => accounts.id, {
+      onDelete: "cascade",
+    }),
     // Is this a group/header account or an account
     // that can actually receive journal lines?
     isGroup: integer("is_group", { mode: "boolean" }).notNull().default(false),
@@ -320,8 +329,17 @@ export const contacts = sqliteTable("contacts", {
 
   taxNumber: text("tax_number"),
 
-  receivableAccountId: text("receivable_account_id"),
-  payableAccountId: text("payable_account_id"),
+  receivableAccountId: text("receivable_account_id").references(
+    () => accounts.id,
+    { onDelete: "cascade" },
+  ),
+  payableAccountId: text("payable_account_id").references(() => accounts.id, {
+    onDelete: "cascade",
+  }),
+
+  taxAccountId: text("tax_account_id").references(() => accounts.id, {
+    onDelete: "cascade",
+  }),
 
   creditLimit: integer("credit_limit"),
 
@@ -351,9 +369,6 @@ export const journalEntries = sqliteTable(
 
     description: text("description"),
 
-    referenceType: text("reference_type"),
-    referenceId: text("reference_id"),
-
     status: text("status", {
       enum: ["draft", "posted", "voided"],
     })
@@ -363,7 +378,9 @@ export const journalEntries = sqliteTable(
       mode: "timestamp_ms",
     }),
 
-    createdBy: text("created_by"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
 
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
@@ -375,11 +392,6 @@ export const journalEntries = sqliteTable(
     uniqueIndex("journal_entry_number_unique").on(table.entryNumber),
 
     index("journal_entries_date_idx").on(table.date),
-
-    index("journal_entries_reference_idx").on(
-      table.referenceType,
-      table.referenceId,
-    ),
   ],
 );
 
@@ -388,9 +400,13 @@ export const journalLines = sqliteTable(
   {
     id: text("id").primaryKey().$defaultFn(generateId),
 
-    journalEntryId: text("journal_entry_id").notNull(),
+    journalEntryId: text("journal_entry_id")
+      .notNull()
+      .references(() => journalEntries.id, { onDelete: "cascade" }),
 
-    accountId: text("account_id").notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "restrict" }),
 
     description: text("description"),
 
@@ -398,9 +414,13 @@ export const journalLines = sqliteTable(
 
     credit: integer("credit").notNull().default(0),
 
-    contactId: text("contact_id"),
+    contactId: text("contact_id").references(() => contacts.id, {
+      onDelete: "restrict",
+    }),
 
-    productId: text("product_id"),
+    productId: text("product_id").references(() => products.id, {
+      onDelete: "restrict",
+    }),
 
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
@@ -422,7 +442,9 @@ export const salesInvoices = sqliteTable("sales_invoices", {
 
   invoiceNumber: text("invoice_number").notNull(),
 
-  customerId: text("customer_id"),
+  customerId: text("customer_id").references(() => contacts.id, {
+    onDelete: "cascade",
+  }),
 
   date: integer("date", {
     mode: "timestamp_ms",
@@ -439,7 +461,15 @@ export const salesInvoices = sqliteTable("sales_invoices", {
   tax: integer("tax").notNull(),
   total: integer("total").notNull(),
 
-  journalEntryId: text("journal_entry_id"),
+  dueDate: integer("due_date", { mode: "timestamp_ms" }).notNull(),
+
+  currencyId: text("currency_id")
+    .notNull()
+    .references(() => currencies.id, { onDelete: "restrict" }),
+
+  journalEntryId: text("journal_entry_id").references(() => journalEntries.id, {
+    onDelete: "restrict",
+  }),
 
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
@@ -451,9 +481,13 @@ export const salesInvoices = sqliteTable("sales_invoices", {
 export const salesInvoiceLines = sqliteTable("sales_invoice_lines", {
   id: text("id").primaryKey().$defaultFn(generateId),
 
-  invoiceId: text("invoice_id").notNull(),
+  invoiceId: text("invoice_id")
+    .notNull()
+    .references(() => salesInvoices.id, { onDelete: "cascade" }),
 
-  productId: text("product_id").notNull(),
+  productId: text("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "restrict" }),
 
   description: text("description"),
 
@@ -466,12 +500,20 @@ export const salesInvoiceLines = sqliteTable("sales_invoice_lines", {
   tax: integer("tax").notNull(),
 
   total: integer("total").notNull(),
+
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(generateTimestamp),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
 });
 
 export const customerPayments = sqliteTable("customer_payments", {
   id: text("id").primaryKey().$defaultFn(generateId),
 
-  customerId: text("customer_id").notNull(),
+  customerId: text("customer_id")
+    .notNull()
+    .references(() => contacts.id, { onDelete: "restrict" }),
 
   amount: integer("amount").notNull(),
 
@@ -483,9 +525,9 @@ export const customerPayments = sqliteTable("customer_payments", {
     enum: ["cash", "bank", "card", "other"],
   }).notNull(),
 
-  reference: text("reference"),
-
-  journalEntryId: text("journal_entry_id"),
+  journalEntryId: text("journal_entry_id").references(() => journalEntries.id, {
+    onDelete: "restrict",
+  }),
 
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
@@ -499,9 +541,132 @@ export const customerPaymentAllocation = sqliteTable(
   {
     id: text("id").primaryKey().$defaultFn(generateId),
 
-    paymentId: text("payment_id").notNull(),
+    paymentId: text("payment_id")
+      .notNull()
+      .references(() => customerPayments.id, { onDelete: "cascade" }),
 
-    invoiceId: text("invoice_id").notNull(),
+    invoiceId: text("invoice_id")
+      .notNull()
+      .references(() => salesInvoices.id),
+
+    allocatedAmount: integer("allocated_amount").notNull(),
+
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(generateTimestamp),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+);
+
+export const restockInvoices = sqliteTable("restock_invoices", {
+  id: text("id").primaryKey().$defaultFn(generateId),
+
+  invoiceNumber: text("invoice_number").notNull(),
+
+  supplierId: text("supplier_id").references(() => contacts.id, {
+    onDelete: "cascade",
+  }),
+
+  date: integer("date", {
+    mode: "timestamp_ms",
+  }).notNull(),
+
+  status: text("status", {
+    enum: ["draft", "posted", "cancelled"],
+  })
+    .notNull()
+    .default("draft"),
+
+  subtotal: integer("subtotal").notNull(),
+  discount: integer("discount").notNull(),
+  total: integer("total").notNull(),
+
+  dueDate: integer("due_date", { mode: "timestamp_ms" }).notNull(),
+
+  currencyId: text("currency_id")
+    .notNull()
+    .references(() => currencies.id, { onDelete: "restrict" }),
+
+  journalEntryId: text("journal_entry_id").references(() => journalEntries.id, {
+    onDelete: "restrict",
+  }),
+
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(generateTimestamp),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+});
+
+export const restockInvoiceLines = sqliteTable("restock_invoice_lines", {
+  id: text("id").primaryKey().$defaultFn(generateId),
+
+  invoiceId: text("invoice_id")
+    .notNull()
+    .references(() => restockInvoices.id, { onDelete: "cascade" }),
+
+  productId: text("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "restrict" }),
+
+  description: text("description"),
+
+  quantity: integer("quantity").notNull(),
+
+  unitPrice: integer("unit_price").notNull(),
+
+  discount: integer("discount").notNull(),
+
+  total: integer("total").notNull(),
+
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(generateTimestamp),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+});
+
+export const supplierPayments = sqliteTable("supplier_payments", {
+  id: text("id").primaryKey().$defaultFn(generateId),
+
+  supplierId: text("supplier_id")
+    .notNull()
+    .references(() => contacts.id, { onDelete: "restrict" }),
+
+  amount: integer("amount").notNull(),
+
+  paymentDate: integer("payment_date", {
+    mode: "timestamp_ms",
+  }).notNull(),
+
+  paymentMethod: text("payment_method", {
+    enum: ["cash", "bank", "card", "other"],
+  }).notNull(),
+
+  journalEntryId: text("journal_entry_id").references(() => journalEntries.id, {
+    onDelete: "restrict",
+  }),
+
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(generateTimestamp),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+});
+
+export const supplierPaymentAllocation = sqliteTable(
+  "supplier_payment_allocations",
+  {
+    id: text("id").primaryKey().$defaultFn(generateId),
+
+    paymentId: text("payment_id")
+      .notNull()
+      .references(() => supplierPayments.id, { onDelete: "cascade" }),
+
+    invoiceId: text("invoice_id")
+      .notNull()
+      .references(() => restockInvoices.id),
 
     allocatedAmount: integer("allocated_amount").notNull(),
 
@@ -517,7 +682,7 @@ export const settings = sqliteTable(
   "settings",
   {
     id: text("id").primaryKey().$defaultFn(generateId),
-    label: text("label").notNull(),
+    label: text("label").notNull().unique(),
     body: text("body", { mode: "json" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
