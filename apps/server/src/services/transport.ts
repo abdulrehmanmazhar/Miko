@@ -25,6 +25,7 @@ export type NeutralinoTransport = ChannelTransport & {
 
 export const connectNeutralinoTransport = (
   auth: NeutralinoAuth,
+  logger: (level: "info" | "warn" | "error", message: string) => void,
   options?: {
     onLifecycleEvent?: (event: string, data: unknown) => void;
   },
@@ -90,6 +91,10 @@ export const connectNeutralinoTransport = (
     }
 
     options?.onLifecycleEvent?.(eventName, data);
+  };
+
+  socket.onerror = (event) => {
+    logger("error", `WebSocket error: ${event}`);
   };
 
   return transport;
