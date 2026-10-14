@@ -13,7 +13,8 @@ import { databaseTaskManager } from "./utils/task_manager/index.js";
 
   const channel = createChannel(transport);
 
-  await import("./handlers/index.js");
+  await import("./handlers/table_crud.js");
+  await import("./handlers/business_functions.js");
 
   channel.start();
 
@@ -31,15 +32,6 @@ import { databaseTaskManager } from "./utils/task_manager/index.js";
 
   log("info", "Unit task data", { data: await unitTask.getData() });
 
-  // const currencyTask = await databaseTaskManager.initiateTask(
-  //   "create_currency",
-  //   {
-  //     currency: { symbol: "PKR", name: "PKR" },
-  //     context: "normal",
-  //   },
-  // );
-
-  // log("info", "Currency task data", { data: await currencyTask.getData() });
 })().catch((err) => {
   log("error", "Unexpected error in main thread", { err });
   process.exit(1);

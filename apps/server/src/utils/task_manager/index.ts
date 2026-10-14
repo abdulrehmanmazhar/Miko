@@ -3,9 +3,6 @@ import { EventEmitter } from "events";
 import { log } from "../../services/logger.js";
 import { taskRunner } from "./orchestrator.js";
 import getActions from "../../task/database/get_actions.js";
-import createCurrency from "../../task/database/create_currency.js";
-import createProduct from "../../task/database/create_product.js";
-import createUnit from "../../task/database/create_unit.js";
 import undoActions from "../../task/database/undo_actions.js";
 import redoActions from "../../task/database/redo_actions.js";
 import mutateTableTask from "../../task/database/mutate_table.js";
@@ -542,39 +539,6 @@ const databaseTasks = [
     } as Partial<ITaskInstance>,
   },
   {
-    name: "create_currency",
-    defaults: {
-      feedbackScope: "global",
-      intensity: "low",
-      // taskModule: getTaskModuleURL("database/create_currency.js"),
-      taskModule: createCurrency,
-      retries: 0,
-      maxRetries: 1,
-    } as Partial<ITaskInstance>,
-  },
-  {
-    name: "create_product",
-    defaults: {
-      feedbackScope: "global",
-      intensity: "low",
-      // taskModule: getTaskModuleURL("database/create_product.js"),
-      taskModule: createProduct,
-      retries: 0,
-      maxRetries: 1,
-    } as Partial<ITaskInstance>,
-  },
-  {
-    name: "create_unit",
-    defaults: {
-      feedbackScope: "global",
-      intensity: "low",
-      // taskModule: getTaskModuleURL("database/create_unit.js"),
-      taskModule: createUnit,
-      retries: 0,
-      maxRetries: 1,
-    } as Partial<ITaskInstance>,
-  },
-  {
     name: "create_table_row",
     defaults: {
       feedbackScope: "global",
@@ -629,7 +593,6 @@ const databaseTasks = [
     defaults: {
       feedbackScope: "global",
       intensity: "low",
-      // taskModule: getTaskModuleURL("database/create_unit.js"),
       taskModule: undoActions,
       retries: 0,
       maxRetries: 1,
@@ -640,7 +603,6 @@ const databaseTasks = [
     defaults: {
       feedbackScope: "global",
       intensity: "low",
-      // taskModule: getTaskModuleURL("database/create_unit.js"),
       taskModule: redoActions,
       retries: 0,
       maxRetries: 1,

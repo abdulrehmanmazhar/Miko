@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, max } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, max, or } from "drizzle-orm";
 import { database } from "../../services/database.js";
 import {
-  accounts,
+  batchPrices,
   contacts,
   currencies,
   inventoryMovements,
@@ -17,168 +17,11 @@ import {
   warehouses,
 } from "../../schema/tables.js";
 import { pushActionContext } from "../../utils/action_recorder/index.js";
-
-type SaleLineInput = {
-  productId: string;
-  batchId: string;
-  warehouseId: string;
-  quantity: number;
-  unitPrice: number;
-  discount: number;
-  tax: number;
-  taxAccountId?: string;
-  description?: string;
-};
-
-type SaleInput = {
-  invoiceNumber: string;
-  customerId: string;
-  date: number;
-  dueDate: number;
-  currencyId: string;
-  createdBy: string;
-  lines: SaleLineInput[];
-  description?: string;
-};
-
-type PreparedLine = SaleLineInput & {
-  discount: number;
-  tax: number;
-  lineSubtotal: number;
-  lineTotal: number;
-  unitCost: number;
-  stockId: string;
-  stockQuantity: number;
-  salesAccountId: string;
-  inventoryAccountId: string;
-  cogsAccountId: string;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requireString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${field} must be a non-empty string.`);
-  }
-  return value.trim();
-}
-
-function requireInteger(value: unknown, field: string): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isSafeInteger(value) ||
-    value < 0
-  ) {
-    throw new Error(`${field} must be a non-negative safe integer.`);
-  }
-  return value;
-}
-
-function requireTimestamp(value: unknown, field: string): number {
-  const timestamp = requireInteger(value, field);
-  if (Number.isNaN(new Date(timestamp).getTime())) {
-    throw new Error(`${field} must be a valid Unix timestamp in milliseconds.`);
-  }
-  return timestamp;
-}
-
-function parseSaleInput(data: unknown): SaleInput {
-  if (!isRecord(data)) throw new Error("Sale payload must be an object.");
-  if (!Array.isArray(data.lines) || data.lines.length === 0) {
-    throw new Error("A sale must contain at least one line.");
-  }
-
-  const lines = data.lines.map((value, index): SaleLineInput => {
-    const prefix = `lines[${index}]`;
-    if (!isRecord(value)) throw new Error(`${prefix} must be an object.`);
-
-    const line: SaleLineInput = {
-      productId: requireString(value.productId, `${prefix}.productId`),
-      batchId: requireString(value.batchId, `${prefix}.batchId`),
-      warehouseId: requireString(value.warehouseId, `${prefix}.warehouseId`),
-      quantity: requireInteger(value.quantity, `${prefix}.quantity`),
-      unitPrice: requireInteger(value.unitPrice, `${prefix}.unitPrice`),
-      discount:
-        value.discount === undefined
-          ? 0
-          : requireInteger(value.discount, `${prefix}.discount`),
-      tax:
-        value.tax === undefined
-          ? 0
-          : requireInteger(value.tax, `${prefix}.tax`),
-    };
-    if (line.quantity < 1) {
-      throw new Error(`${prefix}.quantity must be greater than zero.`);
-    }
-    if (value.taxAccountId !== undefined) {
-      line.taxAccountId = requireString(
-        value.taxAccountId,
-        `${prefix}.taxAccountId`,
-      );
-    }
-    if (value.description !== undefined) {
-      if (typeof value.description !== "string") {
-        throw new Error(`${prefix}.description must be a string.`);
-      }
-      line.description = value.description;
-    }
-    if (line.tax > 0 && !line.taxAccountId) {
-      throw new Error(
-        `${prefix}.taxAccountId is required when tax is greater than zero.`,
-      );
-    }
-    return line;
-  });
-
-  const date = requireTimestamp(data.date, "date");
-  const dueDate = requireTimestamp(data.dueDate, "dueDate");
-  if (dueDate < date) {
-    throw new Error("dueDate cannot be earlier than the sale date.");
-  }
-
-  return {
-    invoiceNumber: requireString(data.invoiceNumber, "invoiceNumber"),
-    customerId: requireString(data.customerId, "customerId"),
-    date,
-    dueDate,
-    currencyId: requireString(data.currencyId, "currencyId"),
-    createdBy: requireString(data.createdBy, "createdBy"),
-    lines,
-    ...(data.description === undefined
-      ? {}
-      : { description: requireString(data.description, "description") }),
-  };
-}
-
-function requireActiveAccount(
-  tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
-  accountId: string,
-  expectedType: (typeof accounts.$inferSelect)["type"],
-  label: string,
-) : void {
-  const account = tx
-    .select()
-    .from(accounts)
-    .where(
-      and(
-        eq(accounts.id, accountId),
-        eq(accounts.type, expectedType),
-        eq(accounts.isActive, true),
-        eq(accounts.isGroup, false),
-        isNull(accounts.deletedAt),
-      ),
-    )
-    .limit(1)
-    .get();
-
-  if (!account) {
-    throw new Error(
-      `${label} account "${accountId}" must be an active, non-group ${expectedType} account.`,
-    );
-  }
-}
+import { requireActiveAccount } from "../../utils/database/sale_accounts.js";
+import {
+  parseSaleInput,
+  type PreparedSaleLine,
+} from "../../utils/database/sale_input.js";
 
 export default async function* recordSale(
   rawInput: unknown,
@@ -246,7 +89,7 @@ export default async function* recordSale(
       .get();
     if (!user) throw new Error("Created-by user was not found or is deleted.");
 
-    const preparedLines: PreparedLine[] = [];
+    const preparedLines: PreparedSaleLine[] = [];
     let subtotal = 0;
     let discountTotal = 0;
     let taxTotal = 0;
@@ -288,15 +131,6 @@ export default async function* recordSale(
       );
       requireActiveAccount(tx, product.cogsAccountId, "expense", "COGS");
 
-      if (line.taxAccountId) {
-        requireActiveAccount(
-          tx,
-          line.taxAccountId,
-          "liability",
-          "Tax liability",
-        );
-      }
-
       const batch = tx
         .select()
         .from(batches)
@@ -314,6 +148,31 @@ export default async function* recordSale(
           `Batch "${line.batchId}" does not belong to product "${product.id}" or is deleted.`,
         );
       }
+      const applicablePrices = tx
+        .select()
+        .from(batchPrices)
+        .where(
+          and(
+            eq(batchPrices.batchId, batch.id),
+            lte(batchPrices.validFrom, new Date(input.date)),
+            or(
+              isNull(batchPrices.validTo),
+              gt(batchPrices.validTo, new Date(input.date)),
+            ),
+            isNull(batchPrices.deletedAt),
+          ),
+        )
+        .all();
+      if (applicablePrices.length !== 1) {
+        throw new Error(
+          `Expected one active price for batch "${batch.id}" on the sale date, found ${applicablePrices.length}.`,
+        );
+      }
+      const batchPrice = applicablePrices[0]!;
+      if (!Number.isSafeInteger(batchPrice.tax) || batchPrice.tax < 0) {
+        throw new Error(`Batch "${batch.id}" has an invalid tax amount.`);
+      }
+
       const warehouse = tx
         .select({ id: warehouses.id })
         .from(warehouses)
@@ -359,12 +218,27 @@ export default async function* recordSale(
 
       const gross = line.quantity * line.unitPrice;
       const net = gross - line.discount;
+      const lineTax = batchPrice.tax * line.quantity;
       if (!Number.isSafeInteger(gross) || line.discount > gross) {
         throw new Error(
           `Discount for product "${product.name}" cannot exceed its line amount.`,
         );
       }
-      const lineTotal = net + line.tax;
+      if (!Number.isSafeInteger(lineTax)) {
+        throw new Error(`Tax for product "${product.name}" is too large.`);
+      }
+      if (lineTax > 0) {
+        if (!customer.taxAccountId) {
+          throw new Error("Customer must have a tax liability account assigned.");
+        }
+        requireActiveAccount(
+          tx,
+          customer.taxAccountId,
+          "liability",
+          "Customer tax liability",
+        );
+      }
+      const lineTotal = net + lineTax;
       const lineCost = line.quantity * batch.costPrice;
       if (!Number.isSafeInteger(lineTotal) || !Number.isSafeInteger(lineCost)) {
         throw new Error(`Sale amounts for product "${product.name}" are too large.`);
@@ -372,7 +246,7 @@ export default async function* recordSale(
 
       subtotal += gross;
       discountTotal += line.discount;
-      taxTotal += line.tax;
+      taxTotal += lineTax;
       invoiceTotal += lineTotal;
       costTotal += lineCost;
       if (
@@ -388,7 +262,7 @@ export default async function* recordSale(
       preparedLines.push({
         ...line,
         discount: line.discount,
-        tax: line.tax,
+        tax: lineTax,
         lineSubtotal: net,
         lineTotal,
         unitCost: batch.costPrice,
@@ -533,14 +407,14 @@ export default async function* recordSale(
         });
       }
       if (line.tax > 0) {
-        if (!line.taxAccountId) {
+        if (!customer.taxAccountId) {
           throw new Error(
-            `Tax account is required for the tax on product "${line.productId}".`,
+            "Customer must have a tax liability account assigned.",
           );
         }
         journalLineValues.push({
           journalEntryId: journalEntry.id,
-          accountId: line.taxAccountId,
+          accountId: customer.taxAccountId,
           description: `Tax - ${line.productId}`,
           debit: 0,
           credit: line.tax,
