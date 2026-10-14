@@ -173,6 +173,7 @@ export const batchPrices = sqliteTable(
       .references(() => batches.id, { onDelete: "cascade" }),
     salePrice: integer("sale_price").notNull(),
     discount: integer("discount").notNull(),
+    tax: integer("tax").notNull(),
     validFrom: integer("valid_from", { mode: "timestamp_ms" }).notNull(),
     validTo: integer("valid_to", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -326,6 +327,10 @@ export const contacts = sqliteTable("contacts", {
   whatsapp: text("whatsapp"),
   email: text("email"),
   address: text("address"),
+
+  taxStatus: text("tax_status", {
+    enum: ["filer", "non-filer"],
+  }).notNull(),
 
   taxNumber: text("tax_number"),
 
